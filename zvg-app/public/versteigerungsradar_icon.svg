@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Versteigerungsradar icon: house + radar, single color (#C40021), no background -->
+  <g stroke="#C40021" fill="none" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <!-- House outline -->
+    <path d="M128 260 L256 166 L384 260"/>
+    <rect x="168" y="260" width="176" height="140" rx="8" ry="8"/>
+    <rect x="232" y="312" width="48" height="88" rx="6" ry="6"/>
+    <!-- Radar sweep line from roof peak -->
+    <path d="M256 180 L338 230"/>
+    <!-- Radar arcs (centered near roof peak) -->
+    <path d="M292 204 A72 72 0 0 1 368 256"/>
+    <path d="M292 180 A96 96 0 0 1 392 256"/>
+    <path d="M288 156 A124 124 0 0 1 416 256"/>
+    <!-- Radar dot at sweep tip -->
+    <circle cx="338" cy="230" r="10" fill="#C40021" stroke="#C40021"/>
+  </g>
+</svg>
