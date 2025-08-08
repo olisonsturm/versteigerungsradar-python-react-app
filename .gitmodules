@@ -1,0 +1,3 @@
+[submodule "ZvgPortalScraper"]
+	path = ZvgPortalScraper
+	url = https://github.com/larsborn/ZvgPortalScraper.git
