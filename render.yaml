@@ -1,0 +1,12 @@
+services:
+  - type: web
+    runtime: python
+    name: zvg-fullstack
+    region: frankfurt
+    buildCommand: |
+      pip install -r requirements.txt
+      git clone https://github.com/larsborn/ZvgPortalScraper.git
+      pip install -r ZvgPortalScraper/requirements.txt
+      cd zvg-app && npm ci && npm run build
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    autoDeploy: true

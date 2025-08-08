@@ -1,0 +1,115 @@
+/*
+ * Global styles for the Zwangsversteigerung App
+ *
+ * We prioritise legibility and simplicity. Typography is
+ * larger than default to accommodate users who may not be
+ * experienced with computers. Colours are neutral and
+ * contrast sufficient for readability.
+ */
+
+body {
+  margin: 0;
+  font-family: sans-serif;
+  background-color: #f8f8f8;
+  color: #333;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+h1 {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+/* Form styles */
+.search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background-color: #fff;
+  padding: 1rem;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-row label {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.form-row select,
+.form-row input[type="number"] {
+  padding: 0.4rem;
+  font-size: 1rem;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+button {
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  background-color: #2a7ae4;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button[disabled] {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Results table */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #fff;
+  margin-bottom: 1rem;
+}
+
+.results-table th,
+.results-table td {
+  border: 1px solid #ddd;
+  padding: 0.5rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.results-table th {
+  background-color: #f0f0f0;
+  font-weight: 600;
+}
+
+.results-table tbody tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
