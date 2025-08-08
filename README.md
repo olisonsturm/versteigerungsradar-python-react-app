@@ -91,7 +91,7 @@ cd ..
 ### 4) Start backend (serves frontend too)
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn main:app --reload --port 8000 --app-dir app
 ```
 
 ### 5) Open in browser
