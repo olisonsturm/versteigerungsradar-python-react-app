@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
+import LoadingSpinner from './components/LoadingSpinner';
+import ErrorPopup from './components/ErrorPopup';
+import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
 
 // Base URL for the backend API. Adjust this if the backend runs on a
@@ -14,7 +17,7 @@ function parseHouseNumbers(houseString) {
   const results = [];
   if (!houseString) return results;
   // split by comma, semicolon or slash
-  const parts = houseString.split(/[;,\/]+/);
+  const parts = houseString.split(/[;,/]+/);
   parts.forEach(part => {
     const trimmed = part.trim();
     if (trimmed.includes('-')) {
@@ -43,7 +46,7 @@ function parseHouseNumbers(houseString) {
 function App() {
   // Search criteria state
   const [criteria, setCriteria] = useState({
-    state: 'Baden-Württemberg',
+    states: ['Baden-Württemberg'],
     auctionTypes: [
       'Versteigerung im Wege der Zwangsvollstreckung',
       'Zwangsversteigerung zum Zwecke der Aufhebung der Gemeinschaft',
@@ -60,6 +63,12 @@ function App() {
 
   // Results after filtering
   const [results, setResults] = useState([]);
+
+  // Loading state for search
+  const [loading, setLoading] = useState(false);
+
+  // Error state for search
+  const [error, setError] = useState(null);
 
   // Selected addresses for export
   const [selected, setSelected] = useState({});
@@ -78,24 +87,49 @@ function App() {
   // Perform search via backend API and update results. Applies
   // additional duplicate filtering client-side based on contact history.
   const handleSearch = async () => {
-    // Build query parameters
-    const params = new URLSearchParams();
-    params.append('state', criteria.state);
-    params.append('auctionTypes', (criteria.auctionTypes || []).join(','));
-    params.append('propertyTypes', (criteria.propertyTypes || []).join(','));
-    params.append('minDays', criteria.minDays ?? 0);
+    setLoading(true);
+    setError(null);
+
+    const selectedStates = (criteria.states && criteria.states.length > 0)
+      ? criteria.states
+      : [];
+
+    if (selectedStates.length === 0) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+
+    // Build shared query parameters (without state)
+    const baseParams = new URLSearchParams();
+    baseParams.append('auctionTypes', (criteria.auctionTypes || []).join(','));
+    baseParams.append('propertyTypes', (criteria.propertyTypes || []).join(','));
+    baseParams.append('minDays', criteria.minDays ?? 0);
 
     try {
-      const response = await fetch(`${API_URL}?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      // Apply duplicate filtering on client side
+      // Fetch each state in parallel
+      const fetches = selectedStates.map(async (state) => {
+        const params = new URLSearchParams(baseParams);
+        params.append('state', state);
+        try {
+          const resp = await fetch(`${API_URL}?${params.toString()}`);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          return await resp.json();
+        } catch (e) {
+          console.error(`Failed to fetch results for ${state}:`, e);
+          // Continue with other states; return empty list for this one
+          return [];
+        }
+      });
+
+      const resultsByState = await Promise.all(fetches);
+      const combined = resultsByState.flat();
+
+      // Apply duplicate/contact-history filtering on client side
       const now = new Date();
       const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const firstOfCurrent = new Date(now.getFullYear(), now.getMonth(), 1);
-      const filtered = data.filter(item => {
+      const filtered = combined.filter(item => {
         const history = contactHistory[item.id];
         if (history) {
           const contactDate = new Date(history);
@@ -105,15 +139,18 @@ function App() {
         }
         return true;
       });
+
       setResults(filtered);
-      setSelected({});
-    } catch (err) {
-      console.error('Search failed', err);
+    } catch (error) {
+      console.error('Failed to fetch search results:', error);
+      setError(`Die Suche ist fehlgeschlagen. Bitte überprüfen Sie die Netzwerkverbindung und stellen Sie sicher, dass der Backend-Server erreichbar ist. Details: ${error.message}`);
       setResults([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle selecting or deselecting a result row
+  // Toggle selection for a single result
   const handleToggleSelect = (id) => {
     setSelected(prev => ({
       ...prev,
@@ -141,14 +178,15 @@ function App() {
     results.forEach(item => {
       if (selected[item.id]) {
         const numbers = parseHouseNumbers(item.houseNumbers);
-        const base = `${item.street}`;
-        numbers.forEach(num => {
-          list.push({
-            street: `${base} ${num}`,
-            zip: item.zip,
-            city: item.city,
+        const baseStreet = `${item.street}`.trim();
+        if (numbers.length === 0) {
+          list.push({ street: baseStreet, zip: item.zip, city: item.city });
+        } else {
+          numbers.forEach(num => {
+            const street = num ? `${baseStreet} ${num}` : baseStreet;
+            list.push({ street, zip: item.zip, city: item.city });
           });
-        });
+        }
       }
     });
     return list;
@@ -160,7 +198,11 @@ function App() {
     if (addresses.length === 0) return;
     let csvContent = 'Straße,PLZ,Ort\n';
     addresses.forEach(addr => {
-      csvContent += `${addr.street},${addr.zip},${addr.city}\n`;
+      // Escape potential commas by wrapping fields in quotes
+      const street = `"${addr.street.replace(/"/g, '""')}"`;
+      const zip = `"${String(addr.zip || '').replace(/"/g, '""')}"`;
+      const city = `"${String(addr.city || '').replace(/"/g, '""')}"`;
+      csvContent += `${street},${zip},${city}\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -174,25 +216,38 @@ function App() {
   };
 
   return (
-    <div className="container">
-      <h1>Zwangsversteigerung Terminrecherche</h1>
-      <SearchForm criteria={criteria} setCriteria={setCriteria} onSearch={handleSearch} />
-      <ResultsTable
-        results={results}
-        selected={selected}
-        onToggleSelect={handleToggleSelect}
-      />
-      {results.length > 0 && (
-        <div className="actions">
-          <button
-            type="button"
-            onClick={exportToCSV}
-            disabled={Object.keys(selected).filter(key => selected[key]).length === 0}
-          >
-            Adressen als CSV exportieren
-          </button>
-        </div>
-      )}
+    <div className="app">
+      {loading && <LoadingSpinner />}
+      {error && <ErrorPopup message={error} onClose={() => setError(null)} />}
+      <header className="app-header">
+        <h1>Versteigerungsradar</h1>
+      </header>
+      <main>
+        <ErrorBoundary fallbackMessage="Beim Anzeigen der Ergebnisse ist ein Fehler aufgetreten.">
+          <SearchForm
+            criteria={criteria}
+            setCriteria={setCriteria}
+            onSearch={handleSearch}
+            loading={loading}
+          />
+          <ResultsTable
+            results={results}
+            selected={selected}
+            onToggleSelect={handleToggleSelect}
+          />
+          {results.length > 0 && (
+            <div className="actions">
+              <button
+                type="button"
+                onClick={exportToCSV}
+                disabled={Object.keys(selected).filter(key => selected[key]).length === 0}
+              >
+                Adressen als CSV exportieren
+              </button>
+            </div>
+          )}
+        </ErrorBoundary>
+      </main>
     </div>
   );
 }

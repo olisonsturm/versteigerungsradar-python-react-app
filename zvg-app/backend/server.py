@@ -38,7 +38,8 @@ import urllib.parse
 import sys
 import os
 import locale
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+import time
 
 # Patch locale.setlocale to gracefully handle missing German locale
 # The upstream ZvgPortalScraper attempts to set the system locale to
@@ -106,6 +107,10 @@ class ZVGBackend:
     def __init__(self, base_url: str = 'https://www.zvg-portal.de', user_agent: str = 'ZvgPortalBackend/1.0'):
         self.logger = logging.getLogger('ZVGBackend')
         self.portal = ZvgPortal(self.logger, user_agent, base_url)
+        # Simple in-memory cache for entries per Land
+        self._entries_cache: Dict[str, Dict[str, Any]] = {}
+        # Cache TTL can be configured via env var (seconds), default 30 minutes
+        self._cache_ttl_seconds: int = int(os.environ.get('ZVG_CACHE_TTL', '1800'))
         # Build mapping from state names to Land objects
         self.state_map: Dict[str, Land] = {}
         for land in self.portal.get_laender():
@@ -152,6 +157,34 @@ class ZVGBackend:
             'Gewerbeeinheit': ['gewerbeeinheit', 'gewerbefläche', 'gewerbeobjekt'],
         }
 
+    def _fix_encoding(self, s: Optional[str]) -> str:
+        """Fix common mojibake (UTF-8 seen as Latin-1) if detected.
+
+        If the text contains 'Ã' or 'Â', try latin-1 -> utf-8 roundtrip.
+        """
+        if not s:
+            return ''
+        try:
+            if 'Ã' in s or 'Â' in s:
+                return s.encode('latin-1', errors='ignore').decode('utf-8', errors='ignore')
+            return s
+        except Exception:
+            return s
+
+    def _get_entries_cached(self, land: Land) -> List[ObjektEntry]:
+        key = land.name
+        now = time.time()
+        entry = self._entries_cache.get(key)
+        if entry and (now - entry['ts'] < self._cache_ttl_seconds):
+            return entry['entries']
+        # Refresh cache
+        t0 = time.time()
+        entries = list(self.portal.list(land))
+        dt = time.time() - t0
+        self._entries_cache[key] = {'ts': now, 'entries': entries}
+        self.logger.info(f"Fetched {len(entries)} raw entries for '{land.name}' in {dt:.1f}s (cache ttl {self._cache_ttl_seconds}s)")
+        return entries
+
     def _determine_property_type(self, text: str, selected_types: List[str]) -> Optional[str]:
         """Return the first matching property type for the given text.
 
@@ -184,7 +217,7 @@ class ZVGBackend:
         now = datetime.datetime.now()
         min_date = (now + datetime.timedelta(days=min_days)).date()
 
-        for raw in self.portal.list(land):
+        for raw in self._get_entries_cached(land):
             # Wir interessieren uns nur für „ObjektEntry“
             if not isinstance(raw, ObjektEntry):
                 continue
@@ -195,17 +228,20 @@ class ZVGBackend:
                 # --- Datum robust parsen ---
                 auction_dt = entry.termin_as_date
                 if not auction_dt and entry.termin_as_str:
-                    auction_dt = GermanDateParser.parse(entry.termin_as_str)
+                    fixed_date_str = self._fix_encoding(entry.termin_as_str)
+                    auction_dt = GermanDateParser.parse(fixed_date_str)
                 if not auction_dt or auction_dt.date() < min_date:
                     continue
 
                 # --- Versteigerungsart filtern (optional) ---
-                art = (entry.art_der_versteigerung or '').strip()
+                art = self._fix_encoding((entry.art_der_versteigerung or '').strip())
                 if auction_types and art and art not in auction_types:
                     continue
 
                 # --- Objektart erkennen (optional) ---
-                combined_text = ' '.join(filter(None, [entry.objekt_lage or '', entry.beschreibung or ''])).lower()
+                objekt_lage = self._fix_encoding(entry.objekt_lage or '')
+                beschreibung = self._fix_encoding(entry.beschreibung or '')
+                combined_text = ' '.join(filter(None, [objekt_lage, beschreibung])).lower()
                 prop_type = ''
                 if property_types:
                     p = self._determine_property_type(combined_text, property_types)
@@ -220,9 +256,9 @@ class ZVGBackend:
                 city = ''
 
                 if entry.adresse:
-                    street = entry.adresse.strasse or ''
-                    zip_code = entry.adresse.plz or ''
-                    city = entry.adresse.ort or ''
+                    street = self._fix_encoding(entry.adresse.strasse or '')
+                    zip_code = self._fix_encoding(entry.adresse.plz or '')
+                    city = self._fix_encoding(entry.adresse.ort or '')
                     # Hausnummern vom Straßenstring abtrennen (wenn vorhanden)
                     import re
                     m = re.match(r'^([^\d]+?)\s*(\d.*)?$', street)
@@ -231,7 +267,7 @@ class ZVGBackend:
                         house_numbers = (m.group(2) or '').strip()
                 else:
                     # Fallback: „Objekt/Lage“ sehr defensiv parsen
-                    parts = (entry.objekt_lage or '').split(',')
+                    parts = (objekt_lage or '').split(',')
                     if parts:
                         street = parts[0].strip()
                         if len(parts) > 1:

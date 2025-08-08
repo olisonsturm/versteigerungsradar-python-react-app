@@ -1,4 +1,5 @@
 import React from 'react';
+import Select from 'react-select';
 
 /**
  * SearchForm component
@@ -8,13 +9,13 @@ import React from 'react';
  * validation beyond presence; since the target user may not be
  * technically inclined, we keep the layout clear and labels simple.
  */
-function SearchForm({ criteria, setCriteria, onSearch }) {
-  // List of Bundesländer available
-  const states = [
-    'Baden-Württemberg',
-    'Hessen',
-    'Nordrhein-Westfalen',
-    'Bayern',
+function SearchForm({ criteria, setCriteria, onSearch, loading }) {
+  // List of Bundesländer available, formatted for react-select
+  const stateOptions = [
+    { value: 'Baden-Württemberg', label: 'Baden-Württemberg' },
+    { value: 'Hessen', label: 'Hessen' },
+    { value: 'Nordrhein-Westfalen', label: 'Nordrhein-Westfalen' },
+    { value: 'Bayern', label: 'Bayern' },
   ];
 
   // List of auction type options
@@ -32,9 +33,10 @@ function SearchForm({ criteria, setCriteria, onSearch }) {
     'Gewerbeeinheit',
   ];
 
-  // Update criteria when state dropdown changes
-  const handleStateChange = (e) => {
-    setCriteria(prev => ({ ...prev, state: e.target.value }));
+  // Update criteria when state dropdown changes (multi-select with react-select)
+  const handleStateChange = (selectedOptions) => {
+    const selected = selectedOptions ? selectedOptions.map(opt => opt.value) : [];
+    setCriteria(prev => ({ ...prev, states: selected }));
   };
 
   // Update criteria for auction type checkboxes
@@ -72,15 +74,24 @@ function SearchForm({ criteria, setCriteria, onSearch }) {
     onSearch();
   };
 
+  // Derive value for react-select from criteria
+  const selectedStateValues = stateOptions.filter(option =>
+    (criteria.states || []).includes(option.value)
+  );
+
   return (
     <form className="search-form" onSubmit={handleSubmit}>
       <div className="form-row">
-        <label>Bundesland</label>
-        <select value={criteria.state} onChange={handleStateChange}>
-          {states.map(state => (
-            <option key={state} value={state}>{state}</option>
-          ))}
-        </select>
+        <label>Bundesländer</label>
+        <Select
+          isMulti
+          options={stateOptions}
+          value={selectedStateValues}
+          onChange={handleStateChange}
+          className="react-select-container"
+          classNamePrefix="react-select"
+          placeholder="Bundesländer auswählen..."
+        />
       </div>
       <div className="form-row">
         <label>Versteigerungsart</label>
@@ -90,7 +101,7 @@ function SearchForm({ criteria, setCriteria, onSearch }) {
               <input
                 type="checkbox"
                 value={option}
-                checked={criteria.auctionTypes.includes(option)}
+                checked={(criteria.auctionTypes || []).includes(option)}
                 onChange={handleAuctionChange}
               />
               {option}
@@ -106,7 +117,7 @@ function SearchForm({ criteria, setCriteria, onSearch }) {
               <input
                 type="checkbox"
                 value={option}
-                checked={criteria.propertyTypes.includes(option)}
+                checked={(criteria.propertyTypes || []).includes(option)}
                 onChange={handlePropertyChange}
               />
               {option}
@@ -124,7 +135,9 @@ function SearchForm({ criteria, setCriteria, onSearch }) {
         />
       </div>
       <div className="form-row">
-        <button type="submit">Suchen</button>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Suchen...' : 'Suchen'}
+        </button>
       </div>
     </form>
   );
